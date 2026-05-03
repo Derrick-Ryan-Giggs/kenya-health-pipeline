@@ -1,0 +1,22 @@
+# ============================================================
+# Kenya Health Facility Mapping Pipeline
+# OpenTofu — terraform.tfvars.example
+#
+# Copy to terraform.tfvars and fill in your values.
+# This file is safe to commit. terraform.tfvars is gitignored.
+# Values must match what is in your root .env file.
+# ============================================================
+
+# ── MinIO ────────────────────────────────────────────────────
+minio_endpoint       = "localhost:9000"
+minio_access_key     = "admin"
+minio_secret_key     = "changeme123"
+minio_raw_bucket     = "raw-facilities"
+minio_iceberg_bucket = "iceberg-warehouse"
+minio_ssl            = false
+
+# ── Trino ────────────────────────────────────────────────────
+trino_host    = "localhost"
+trino_port    = 8081
+trino_catalog = "iceberg"
+trino_schema  = "kenya_health"

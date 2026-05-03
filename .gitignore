@@ -1,0 +1,10 @@
+.env
+*.tfstate
+*.tfstate.backup
+.terraform/
+__pycache__/
+*.pyc
+airflow/logs/
+.dbt/
+*.egg-info/
+.venv/

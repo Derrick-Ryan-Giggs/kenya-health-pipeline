@@ -1,0 +1,14 @@
+# ============================================================
+# Kenya Health Facility Mapping Pipeline
+# ingestion/requirements.txt
+#
+# These are already installed in the Airflow worker image
+# via airflow/requirements.txt.
+# This file exists for local development / testing outside Docker.
+# ============================================================
+
+requests==2.31.0
+boto3==1.34.0
+pandas==2.1.0
+openpyxl==3.1.2    # pandas Excel support for KNBS files
+urllib3==2.0.7

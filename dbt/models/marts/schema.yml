@@ -1,0 +1,73 @@
+# ============================================================
+# Kenya Health Facility Mapping Pipeline
+# models/marts/schema.yml
+# ============================================================
+
+version: 2
+
+models:
+  - name: mart_county_density
+    description: >
+      Facility density scorecard for all 47 Kenya counties.
+      Includes weighted density score, facility type breakdown,
+      and service counts. Powers the county scorecard dashboard.
+    columns:
+      - name: county_name
+        description: Kenya county name
+        tests: [not_null, unique]
+      - name: total_facilities
+        description: Total operational facilities in county
+        tests: [not_null]
+      - name: total_population
+        description: KNBS population estimate
+        tests: [not_null]
+      - name: facilities_per_10k
+        description: Facilities per 10,000 people
+        tests: [not_null]
+      - name: density_rank
+        description: Rank among 47 counties — 1 = most underserved
+        tests: [not_null, unique]
+
+  - name: mart_service_gaps
+    description: >
+      Service availability gaps per county.
+      Shows maternity, ART, TB, and emergency coverage rates
+      per 100,000 people with gap flags.
+    columns:
+      - name: county_name
+        description: Kenya county name
+        tests: [not_null, unique]
+      - name: no_emergency_flag
+        description: True if county has zero emergency facilities
+        tests: [not_null]
+
+  - name: mart_underserved_counties
+    description: >
+      Ranked underserved county scorecard with severity scores.
+      Combines density and service gap data into a single score.
+      Powers the underserved counties dashboard.
+    columns:
+      - name: county_name
+        description: Kenya county name
+        tests: [not_null, unique]
+      - name: severity_score
+        description: Higher score = more underserved
+        tests: [not_null]
+      - name: underserved_rank
+        description: Rank — 1 = most urgently underserved county
+        tests: [not_null, unique]
+
+  - name: mart_nairobi_subcounty
+    description: >
+      Nairobi sub-county facility drill-down.
+      Exposes inequality hidden inside Nairobi's aggregate numbers.
+      Covers Kibera, Mathare, Westlands, Embakasi, and all other sub-counties.
+    columns:
+      - name: sub_county_name
+        description: Nairobi sub-county name
+        tests: [not_null, unique]
+      - name: facilities_per_10k
+        description: Facilities per 10,000 people in this sub-county
+      - name: subcounty_density_rank
+        description: Rank — 1 = most underserved sub-county
+        tests: [not_null, unique]

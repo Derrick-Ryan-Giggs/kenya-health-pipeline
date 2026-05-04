@@ -1,0 +1,35 @@
+# ============================================================
+# Kenya Health Facility Mapping Pipeline
+# dbt/dbt_project.yml
+# ============================================================
+
+name: kenya_health
+version: "1.0.0"
+config-version: 2
+
+profile: kenya_health
+
+# ── Paths ────────────────────────────────────────────────────
+model-paths:    ["models"]
+snapshot-paths: ["snapshots"]
+test-paths:     ["tests"]
+macro-paths:    ["macros"]
+seed-paths:     ["seeds"]
+target-path:    "target"
+clean-targets:  ["target", "dbt_packages"]
+
+# ── Model configs ─────────────────────────────────────────────
+models:
+  kenya_health:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
+
+# ── Snapshot configs ──────────────────────────────────────────
+snapshots:
+  kenya_health:
+    +target_schema: snapshots
+    +strategy: check

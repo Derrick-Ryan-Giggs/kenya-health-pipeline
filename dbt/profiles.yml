@@ -1,0 +1,21 @@
+# ============================================================
+# Kenya Health Facility Mapping Pipeline
+# dbt/profiles.yml
+#
+# All connection details read from environment variables.
+# Never hardcode credentials here.
+# ============================================================
+
+kenya_health:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: none
+      host: "{{ env_var('TRINO_HOST') }}"
+      port: "{{ env_var('TRINO_PORT') | int }}"
+      user: "{{ env_var('TRINO_USER') }}"
+      database: "{{ env_var('TRINO_CATALOG') }}"
+      schema: "{{ env_var('TRINO_SCHEMA') }}"
+      threads: 4
+      http_scheme: http

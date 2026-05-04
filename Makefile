@@ -44,7 +44,7 @@ help:
 
 pull:
 	docker pull trinodb/trino:480
-	docker pull minio/minio:RELEASE.2025-07-18T21-56-31Z
+	docker pull minio/minio:RELEASE.2025-09-07T16-13-09Z
 	docker pull minio/mc:RELEASE.2025-08-13T08-35-41Z
 	docker pull apache/superset:5.0.0
 	docker pull apache/airflow:2.9.2

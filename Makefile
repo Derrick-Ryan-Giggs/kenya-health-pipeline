@@ -53,7 +53,7 @@ pull:
 	docker pull redis:7.2
 
 build:
-	docker compose build airflow-base superset
+	docker compose build airflow-webserver superset
 
 up:
 	docker compose up -d

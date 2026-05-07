@@ -1,35 +1,18 @@
-# ============================================================
-# Kenya Health Facility Mapping Pipeline
-# superset/superset_config.py
-#
-# All sensitive values come from environment variables.
-# Never hardcode secrets here.
-# Mounted into the container at:
-#   /app/pythonpath/superset_config.py
-# ============================================================
-
 import os
+from datetime import timedelta
 
-# ── Core security ─────────────────────────────────────────────
 SECRET_KEY = os.environ["SUPERSET_SECRET_KEY"]
-
-# ── Metadata database (Superset internal state) ───────────────
 SQLALCHEMY_DATABASE_URI = os.environ["DATABASE_URL"]
 
-# ── Feature flags ─────────────────────────────────────────────
-FEATURE_FLAGS = {
-    "ENABLE_TEMPLATE_PROCESSING": True,    # allows {{ }} in SQL queries
-    "DASHBOARD_NATIVE_FILTERS": True,      # cross-filter between charts
-    "DASHBOARD_CROSS_FILTERS": True,
-    "DRILL_TO_DETAIL": True,               # Nairobi sub-county drill-down
-}
-
-# ── Security ──────────────────────────────────────────────────
-WTF_CSRF_ENABLED = True
+PERMANENT_SESSION_LIFETIME = timedelta(days=30)
+SESSION_PERMANENT = True
+SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = False              # set True when behind HTTPS
+SESSION_COOKIE_SECURE = False
 
-# ── Trino connection (shown as default DB in UI) ──────────────
+WTF_CSRF_ENABLED = True
+WTF_CSRF_TIME_LIMIT = None
+
 SQLALCHEMY_EXAMPLES_URI = (
     "trino://{user}@{host}:{port}/{catalog}/{schema}".format(
         user=os.environ["TRINO_USER"],
@@ -40,11 +23,12 @@ SQLALCHEMY_EXAMPLES_URI = (
     )
 )
 
-# ── Cache (uses filesystem by default — upgrade to Redis later) ─
-CACHE_CONFIG = {
-    "CACHE_TYPE": "FileSystemCache",
-    "CACHE_DIR": "/app/superset_home/cache",
+FEATURE_FLAGS = {
+    "ENABLE_TEMPLATE_PROCESSING": True,
+    "DASHBOARD_NATIVE_FILTERS": True,
+    "DASHBOARD_CROSS_FILTERS": True,
+    "DRILL_TO_DETAIL": True,
 }
 
-# ── Timeout for long-running Trino queries ────────────────────
-SUPERSET_WEBSERVER_TIMEOUT = 300          # 5 minutes
+PREVENT_UNSAFE_DEFAULT_URLS_ON_DATASET = False
+SUPERSET_WEBSERVER_TIMEOUT = 300

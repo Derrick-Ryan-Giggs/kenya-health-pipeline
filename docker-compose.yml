@@ -1,26 +1,6 @@
 # ============================================================
 # Kenya Health Facility Mapping Pipeline
 # docker-compose.yml
-#
-# Services:
-#   postgres-airflow   — Airflow metadata DB
-#   postgres-superset  — Superset metadata DB
-#   redis              — Airflow Celery broker
-#   minio              — S3-compatible data lake
-#   minio-init         — one-shot bucket creator
-#   trino              — SQL query engine over Iceberg
-#   airflow-init       — DB migrate + admin user (runs once)
-#   airflow-webserver
-#   airflow-scheduler
-#   airflow-worker
-#   airflow-triggerer
-#   superset
-#
-# Usage:
-#   make build         — build custom Airflow + Superset images
-#   make up            — start all services
-#   make tofu-apply    — provision MinIO buckets (run after make up)
-#   make superset-init — bootstrap Superset admin user
 # ============================================================
 
 x-airflow-common: &airflow-common
@@ -37,19 +17,19 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
     AIRFLOW__CORE__LOAD_EXAMPLES: ${AIRFLOW__CORE__LOAD_EXAMPLES}
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
-    # MinIO — passed to ingestion scripts and dbt via env
+    AIRFLOW__WEBSERVER__SESSION_LIFETIME_MINUTES: 43200
+    AIRFLOW__WEBSERVER__COOKIE_SAMESITE: Lax
+    AIRFLOW__WEBSERVER__COOKIE_SECURE: "false"
     MINIO_ENDPOINT: ${MINIO_ENDPOINT}
     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     MINIO_RAW_BUCKET: ${MINIO_RAW_BUCKET}
     MINIO_ICEBERG_BUCKET: ${MINIO_ICEBERG_BUCKET}
-    # Trino — used by dbt profiles.yml and ingestion
     TRINO_HOST: ${TRINO_HOST}
     TRINO_PORT: ${TRINO_PORT}
     TRINO_USER: ${TRINO_USER}
     TRINO_CATALOG: ${TRINO_CATALOG}
     TRINO_SCHEMA: ${TRINO_SCHEMA}
-    # Data source APIs
     KMHFL_BASE_URL: ${KMHFL_BASE_URL}
     KMHFL_TOKEN: ${KMHFL_TOKEN}
     KNBS_POPULATION_URL: ${KNBS_POPULATION_URL}
@@ -59,6 +39,7 @@ x-airflow-common: &airflow-common
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/webserver_config.py:/opt/airflow/webserver_config.py
     - ./ingestion:/opt/airflow/ingestion
     - ./dbt:/opt/airflow/dbt
   depends_on:
@@ -71,7 +52,6 @@ x-airflow-common: &airflow-common
 
 services:
 
-  # ── Postgres — Airflow metadata DB ───────────────────────
   postgres-airflow:
     image: postgres:13
     env_file: .env
@@ -90,7 +70,6 @@ services:
       - kenya-health-net
     restart: unless-stopped
 
-  # ── Postgres — Superset metadata DB ──────────────────────
   postgres-superset:
     image: postgres:18
     env_file: .env
@@ -109,7 +88,6 @@ services:
       - kenya-health-net
     restart: unless-stopped
 
-  # ── Redis — Airflow Celery broker ─────────────────────────
   redis:
     image: redis:7.2
     healthcheck:
@@ -121,8 +99,6 @@ services:
       - kenya-health-net
     restart: unless-stopped
 
-  # ── MinIO — S3-compatible data lake ───────────────────────
-  # Last open-source release before project was archived (Apr 2026)
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     env_file: .env
@@ -136,7 +112,6 @@ services:
     volumes:
       - minio-data:/data
     healthcheck:
-      # Use curl against the MinIO health endpoint — mc is not in this image
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 15s
       timeout: 5s
@@ -145,10 +120,6 @@ services:
       - kenya-health-net
     restart: unless-stopped
 
-  # ── MinIO init — creates buckets on first start ───────────
-  # Runs once then exits. Uses minio/mc image (mc IS in this image).
-  # MINIO_ENDPOINT in .env is http://minio:9000 — we strip the scheme
-  # for mc alias set which expects host:port only.
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     env_file: .env
@@ -160,12 +131,11 @@ services:
         mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
         mc mb --ignore-existing local/$${MINIO_RAW_BUCKET};
         mc mb --ignore-existing local/$${MINIO_ICEBERG_BUCKET};
-        echo 'Buckets ready: '$${MINIO_RAW_BUCKET}' '$${MINIO_ICEBERG_BUCKET};
+        echo 'Buckets ready';
       "
     networks:
       - kenya-health-net
 
-  # ── Trino — SQL query engine over Iceberg ─────────────────
   trino:
     image: trinodb/trino:480
     env_file: .env
@@ -187,7 +157,6 @@ services:
       - kenya-health-net
     restart: unless-stopped
 
-  # ── Airflow init — runs once then exits ───────────────────
   airflow-init:
     <<: *airflow-common
     command: >
@@ -201,7 +170,6 @@ services:
     networks:
       - kenya-health-net
 
-  # ── Airflow webserver ─────────────────────────────────────
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -212,7 +180,6 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # ── Airflow scheduler ─────────────────────────────────────
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
@@ -221,7 +188,6 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # ── Airflow Celery worker — dbt runs inside here ──────────
   airflow-worker:
     <<: *airflow-common
     command: celery worker
@@ -230,7 +196,6 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # ── Airflow triggerer ─────────────────────────────────────
   airflow-triggerer:
     <<: *airflow-common
     command: triggerer
@@ -239,7 +204,6 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # ── Superset — BI dashboards ──────────────────────────────
   superset:
     build:
       context: ./superset
@@ -263,13 +227,11 @@ services:
       - kenya-health-net
     restart: unless-stopped
 
-# ── Volumes ───────────────────────────────────────────────────
 volumes:
   postgres-airflow-data:
   postgres-superset-data:
   minio-data:
 
-# ── Network ───────────────────────────────────────────────────
 networks:
   kenya-health-net:
     driver: bridge

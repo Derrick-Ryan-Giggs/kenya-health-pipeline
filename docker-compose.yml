@@ -20,6 +20,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__WEBSERVER__SESSION_LIFETIME_MINUTES: 43200
     AIRFLOW__WEBSERVER__COOKIE_SAMESITE: Lax
     AIRFLOW__WEBSERVER__COOKIE_SECURE: "false"
+    AIRFLOW__WEBSERVER__WORKERS: ${AIRFLOW__WEBSERVER__WORKERS}
     MINIO_ENDPOINT: ${MINIO_ENDPOINT}
     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -42,11 +43,22 @@ x-airflow-common: &airflow-common
     - ./airflow/webserver_config.py:/opt/airflow/webserver_config.py
     - ./ingestion:/opt/airflow/ingestion
     - ./dbt:/opt/airflow/dbt
-  depends_on:
-    postgres-airflow:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
+  networks:
+    - kenya-health-net
+
+x-superset-common: &superset-common
+  build:
+    context: ./superset
+    dockerfile: Dockerfile
+  image: kenya-health-superset
+  env_file: .env
+  environment:
+    SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    DATABASE_URL: postgresql+psycopg2://${POSTGRES_SUPERSET_USER}:${POSTGRES_SUPERSET_PASSWORD}@postgres-superset:5432/${POSTGRES_SUPERSET_DB}
+    REDIS_HOST: redis
+  volumes:
+    - ./superset/superset_config.py:/app/pythonpath/superset_config.py
+    - ./superset/dashboards:/app/dashboards
   networks:
     - kenya-health-net
 
@@ -82,8 +94,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERSET_USER} -d ${POSTGRES_SUPERSET_DB}"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 15
+      start_period: 30s
     networks:
       - kenya-health-net
     restart: unless-stopped
@@ -135,6 +148,7 @@ services:
       "
     networks:
       - kenya-health-net
+    restart: "no"
 
   trino:
     image: trinodb/trino:480
@@ -166,7 +180,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: on-failure
+    restart: "no"
     networks:
       - kenya-health-net
 
@@ -178,6 +192,10 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+      postgres-airflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   airflow-scheduler:
@@ -186,6 +204,10 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+      postgres-airflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   airflow-worker:
@@ -194,6 +216,10 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+      postgres-airflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   airflow-triggerer:
@@ -202,30 +228,50 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+      postgres-airflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
-  superset:
-    build:
-      context: ./superset
-      dockerfile: Dockerfile
-    image: kenya-health-superset
-    env_file: .env
-    environment:
-      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_SUPERSET_USER}:${POSTGRES_SUPERSET_PASSWORD}@postgres-superset:5432/${POSTGRES_SUPERSET_DB}
-    ports:
-      - "${SUPERSET_PORT:-8088}:8088"
-    volumes:
-      - ./superset/superset_config.py:/app/pythonpath/superset_config.py
-      - ./superset/dashboards:/app/dashboards
+  # Runs once on fresh start: migrates DB, creates admin user, syncs roles
+  superset-init:
+    <<: *superset-common
+    command: >
+      bash -c "
+        superset db upgrade &&
+        superset fab create-admin
+          --username ${SUPERSET_ADMIN_USER}
+          --firstname Admin
+          --lastname User
+          --email ${SUPERSET_ADMIN_EMAIL}
+          --password ${SUPERSET_ADMIN_PASSWORD} || true &&
+        superset init
+      "
     depends_on:
       postgres-superset:
         condition: service_healthy
-      trino:
+      redis:
         condition: service_healthy
-    networks:
-      - kenya-health-net
+    restart: "no"
+
+  superset:
+    <<: *superset-common
+    ports:
+      - "${SUPERSET_PORT:-8088}:8088"
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+      postgres-superset:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 volumes:
   postgres-airflow-data:

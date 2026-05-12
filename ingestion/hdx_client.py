@@ -2,13 +2,18 @@
 # Kenya Health Facility Mapping Pipeline
 # ingestion/hdx_client.py
 #
-# Fetches Kenya county boundary GeoJSON from HDX
-# (Humanitarian Data Exchange).
-# HDX API docs: https://data.humdata.org/api/3/action/
+# Fetches Kenya county boundary GeoJSON from HDX JSON Repository.
+# Source: https://data.humdata.org/dataset/json-repository
+#
+# Property keys in this GeoJSON:
+#   COUNTY_NAM  — county name
+#   COUNTY_COD  — county code
+#   CONST_CODE  — constituency code
+#   Shape_Area  — area in degrees²
+#   OBJECTID    — feature ID
 #
 # Env vars required:
-#   HDX_BASE_URL          — https://data.humdata.org/api/3
-#   HDX_KENYA_DATASET_ID  — e.g. kenya-county-geojson
+#   HDX_GEOJSON_URL — direct download URL for kenya.geojson
 # ============================================================
 
 import os
@@ -17,8 +22,11 @@ import logging
 from datetime import datetime
 
 import requests
+import urllib3
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -39,65 +47,22 @@ def _get_session() -> requests.Session:
     return session
 
 
-def _get_geojson_url(session: requests.Session, base_url: str, dataset_id: str) -> str:
-    """
-    Query the HDX CKAN API to find the GeoJSON resource URL
-    for the given dataset ID.
-    """
-    endpoint = f"{base_url}/action/package_show"
-    response = session.get(
-        endpoint,
-        params={"id": dataset_id},
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
-
-    result    = response.json().get("result", {})
-    resources = result.get("resources", [])
-
-    if not resources:
-        raise ValueError(f"No resources found for HDX dataset '{dataset_id}'")
-
-    # Find the GeoJSON resource — try format field first, then URL extension
-    geojson_resource = next(
-        (
-            r for r in resources
-            if r.get("format", "").upper() == "GEOJSON"
-            or r.get("url", "").lower().endswith(".geojson")
-        ),
-        None,
-    )
-
-    if not geojson_resource:
-        available = [r.get("format") for r in resources]
-        raise ValueError(
-            f"No GeoJSON resource in dataset '{dataset_id}'. "
-            f"Available formats: {available}"
-        )
-
-    url = geojson_resource["url"]
-    logger.info("Found GeoJSON resource: %s", url)
-    return url
-
-
 def fetch_geojson() -> list[dict]:
     """
-    Fetch Kenya county GeoJSON boundaries from HDX.
-    Flattens each GeoJSON feature into a flat dict record,
-    storing the geometry as a JSON string.
+    Download Kenya county GeoJSON from HDX and return flat records.
+
+    The GeoJSON has one feature per constituency (290 features),
+    not per county (47). We aggregate by county name, keeping
+    the union geometry of the first matching feature and summing area.
 
     Returns:
-        list of flat county boundary records ready for MinIO upload
+        list of county boundary records ready for MinIO upload
     """
-    base_url   = os.environ["HDX_BASE_URL"].rstrip("/")
-    dataset_id = os.environ["HDX_KENYA_DATASET_ID"]
-    session    = _get_session()
+    url     = os.environ["HDX_GEOJSON_URL"]
+    session = _get_session()
 
-    logger.info("Fetching HDX dataset metadata for '%s'", dataset_id)
-    geojson_url = _get_geojson_url(session, base_url, dataset_id)
-
-    logger.info("Downloading GeoJSON from %s", geojson_url)
-    response = session.get(geojson_url, timeout=REQUEST_TIMEOUT)
+    logger.info("Downloading Kenya GeoJSON from %s", url)
+    response = session.get(url, timeout=REQUEST_TIMEOUT, verify=False)
     response.raise_for_status()
 
     geojson     = response.json()
@@ -105,48 +70,48 @@ def fetch_geojson() -> list[dict]:
     ingested_at = datetime.utcnow().isoformat()
 
     if not features:
-        raise ValueError("GeoJSON file contains no features")
+        raise ValueError("GeoJSON file returned no features")
 
-    records = []
+    logger.info("Downloaded %d raw features (constituencies)", len(features))
+
+    # Aggregate constituencies → counties
+    # Keep first geometry per county, sum area
+    county_map: dict = {}
 
     for feature in features:
         props    = feature.get("properties", {})
         geometry = feature.get("geometry", {})
 
-        # KNBS GeoJSON property names vary between HDX datasets —
-        # try multiple known key names for county code and name
-        county_code = str(
-            props.get("OBJECTID")
-            or props.get("County_Cod")
-            or props.get("county_code")
-            or props.get("CODE")
-            or ""
-        )
-        county_name = str(
-            props.get("County")
-            or props.get("NAME_1")
-            or props.get("county_name")
-            or props.get("Name")
-            or ""
-        )
-        area_sqkm = float(
-            props.get("Shape_Area")
-            or props.get("area_sqkm")
-            or props.get("AREA")
-            or 0.0
-        )
+        county_name = str(props.get("COUNTY_NAM") or "").strip().title()
+        county_code = str(props.get("COUNTY_COD") or "").strip()
+        area_sqkm   = float(props.get("Shape_Area") or 0.0)
 
-        if not county_name:
-            logger.warning("Skipping feature with no county name: %s", props)
+        if not county_name or county_name.lower() == "none":
             continue
 
-        records.append({
-            "county_code":  county_code,
-            "county_name":  county_name.strip().title(),
-            "geometry":     json.dumps(geometry),   # stored as JSON string
-            "area_sqkm":    area_sqkm,
-            "ingested_at":  ingested_at,
-        })
+        if county_name not in county_map:
+            county_map[county_name] = {
+                "county_code": county_code,
+                "county_name": county_name,
+                "geometry":    json.dumps(geometry),  # first constituency geometry
+                "area_sqkm":   area_sqkm,
+                "ingested_at": ingested_at,
+            }
+        else:
+            # Accumulate area across constituencies
+            county_map[county_name]["area_sqkm"] += area_sqkm
 
-    logger.info("Fetched %d county boundary records from HDX", len(records))
+    records = list(county_map.values())
+
+    logger.info(
+        "Aggregated %d constituency features into %d county records",
+        len(features), len(records),
+    )
+
+    if not records:
+        raise ValueError(
+            "No county records extracted from GeoJSON. "
+            "Check COUNTY_NAM property key."
+        )
+
     return records

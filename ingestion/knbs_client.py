@@ -2,12 +2,15 @@
 # Kenya Health Facility Mapping Pipeline
 # ingestion/knbs_client.py
 #
-# Downloads KNBS Kenya population estimates.
-# KNBS publishes county and sub-county population data
-# as downloadable CSV/Excel files from their website.
+# Downloads KNBS Kenya population estimates from HDX.
+# Source: Kenya Population Per County from Census Report 2019
+# https://data.humdata.org/dataset/kenya-population-per-county-from-census-report-2019
+#
+# CSV columns (as published by KNBS on HDX):
+#   County, Male, Female, Intersex, Total, Households
 #
 # Env vars required:
-#   KNBS_POPULATION_URL — direct URL to the population CSV/Excel
+#   KNBS_POPULATION_URL — HDX direct CSV download URL
 # ============================================================
 
 import os
@@ -16,14 +19,18 @@ import logging
 from datetime import datetime
 
 import requests
+import urllib3
 import pandas as pd
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 logger = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT = 60   # population file can be large
+REQUEST_TIMEOUT = 60
 MAX_RETRIES     = 3
+CENSUS_YEAR     = 2019
 
 
 def _get_session() -> requests.Session:
@@ -39,71 +46,86 @@ def _get_session() -> requests.Session:
     return session
 
 
-def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalize column names — strip whitespace, lowercase,
-    replace spaces with underscores.
-    """
-    df.columns = [
-        col.strip().lower().replace(" ", "_").replace("-", "_")
-        for col in df.columns
-    ]
-    return df
-
-
 def fetch_population() -> list[dict]:
     """
-    Download KNBS population estimates and return as list of dicts.
-
-    Expected CSV columns (flexible — normalizes whatever KNBS provides):
-        County, Sub County, Population, Year
+    Download KNBS Census 2019 county population data from HDX
+    and return as list of normalised dicts.
 
     Returns:
-        list of flat population records ready for MinIO upload
+        list of population records ready for MinIO upload
     """
     url     = os.environ["KNBS_POPULATION_URL"]
     session = _get_session()
 
-    logger.info("Fetching KNBS population data from %s", url)
-
-    response = session.get(url, timeout=REQUEST_TIMEOUT)
+    logger.info("Fetching KNBS population CSV from %s", url)
+    response = session.get(url, timeout=REQUEST_TIMEOUT, verify=False)
     response.raise_for_status()
 
-    content_type = response.headers.get("Content-Type", "")
+    df = pd.read_csv(io.BytesIO(response.content))
 
-    # Handle both CSV and Excel responses
-    if "excel" in content_type or url.endswith((".xlsx", ".xls")):
-        df = pd.read_excel(io.BytesIO(response.content))
-    else:
-        df = pd.read_csv(io.BytesIO(response.content))
+    # Normalise column names
+    df.columns = [c.strip().lower().replace(" ", "_").replace("-", "_")
+                  for c in df.columns]
 
-    df = _normalize_columns(df)
-
-    logger.info("Downloaded population file — %d rows, columns: %s", len(df), list(df.columns))
+    logger.info("Downloaded %d rows. Columns: %s", len(df), list(df.columns))
 
     ingested_at = datetime.utcnow().isoformat()
     records     = []
 
     for _, row in df.iterrows():
-        # Flexible column mapping — handles variations in KNBS file structure
-        county_code  = str(row.get("county_code") or row.get("code") or "")
-        county_name  = str(row.get("county") or row.get("county_name") or "")
-        sub_county   = str(row.get("sub_county") or row.get("sub_county_name") or "")
-        population   = row.get("population") or row.get("total_population") or 0
-        census_year  = int(row.get("year") or row.get("census_year") or 2019)
+        # KNBS CSV uses 'county' as the county name column
+        county_name = str(
+            row.get("county") or
+            row.get("county_name") or
+            row.get("name") or
+            ""
+        ).strip()
 
-        # Skip completely empty rows
-        if not county_name or not population:
+        if not county_name or county_name.lower() in ("nan", "total", "kenya"):
             continue
 
+        # Population — 'total' column in KNBS CSV
+        population = (
+            row.get("total") or
+            row.get("population") or
+            row.get("total_population") or
+            0
+        )
+
+        try:
+            population = int(str(population).replace(",", ""))
+        except (ValueError, TypeError):
+            population = 0
+
+        if population == 0:
+            continue
+
+        # Sub-county is not in this CSV — county-level only
         records.append({
-            "county_code":   county_code,
-            "county_name":   county_name.strip().title(),
-            "sub_county":    sub_county.strip().title(),
-            "population":    int(population),
-            "census_year":   census_year,
-            "ingested_at":   ingested_at,
+            "county_code":  str(row.get("county_code") or row.get("code") or ""),
+            "county_name":  county_name.title(),
+            "sub_county":   "",
+            "population":   population,
+            "male":         _safe_int(row.get("male")),
+            "female":       _safe_int(row.get("female")),
+            "households":   _safe_int(row.get("households") or row.get("number_of_households")),
+            "census_year":  CENSUS_YEAR,
+            "ingested_at":  ingested_at,
         })
 
-    logger.info("Normalized %d population records", len(records))
+    logger.info("Normalised %d population records", len(records))
+
+    if not records:
+        raise ValueError(
+            "No population records parsed from KNBS CSV. "
+            "Check column names or URL."
+        )
+
     return records
+
+
+def _safe_int(value) -> int:
+    try:
+        return int(str(value).replace(",", ""))
+    except (ValueError, TypeError):
+        return 0

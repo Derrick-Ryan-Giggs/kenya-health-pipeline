@@ -31,11 +31,8 @@ x-airflow-common: &airflow-common
     TRINO_USER: ${TRINO_USER}
     TRINO_CATALOG: ${TRINO_CATALOG}
     TRINO_SCHEMA: ${TRINO_SCHEMA}
-    KMHFL_BASE_URL: ${KMHFL_BASE_URL}
-    KMHFL_TOKEN: ${KMHFL_TOKEN}
     KNBS_POPULATION_URL: ${KNBS_POPULATION_URL}
-    HDX_BASE_URL: ${HDX_BASE_URL}
-    HDX_KENYA_DATASET_ID: ${HDX_KENYA_DATASET_ID}
+   
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/plugins:/opt/airflow/plugins

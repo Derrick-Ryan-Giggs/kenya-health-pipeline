@@ -86,7 +86,8 @@ def fetch_population() -> list[dict]:
 
         # Population — 'total' column in KNBS CSV
         population = (
-            row.get("total") or
+            row.get("total_population19") or
+        row.get("total") or
             row.get("population") or
             row.get("total_population") or
             0
@@ -106,8 +107,8 @@ def fetch_population() -> list[dict]:
             "county_name":  county_name.title(),
             "sub_county":   "",
             "population":   population,
-            "male":         _safe_int(row.get("male")),
-            "female":       _safe_int(row.get("female")),
+            "male":         _safe_int(row.get("male_populatio_2019")),
+            "female":       _safe_int(row.get("female_population_2019")),
             "households":   _safe_int(row.get("households") or row.get("number_of_households")),
             "census_year":  CENSUS_YEAR,
             "ingested_at":  ingested_at,

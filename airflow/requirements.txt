@@ -7,3 +7,4 @@ requests
 pandas
 flask-session
 redis
+openpyxl

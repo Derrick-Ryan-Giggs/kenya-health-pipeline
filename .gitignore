@@ -8,3 +8,5 @@ airflow/logs/
 .dbt/
 *.egg-info/
 .venv/
+
+.bruin.yml

@@ -32,7 +32,6 @@ x-airflow-common: &airflow-common
     TRINO_CATALOG: ${TRINO_CATALOG}
     TRINO_SCHEMA: ${TRINO_SCHEMA}
     KNBS_POPULATION_URL: ${KNBS_POPULATION_URL}
-   
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/plugins:/opt/airflow/plugins
@@ -147,6 +146,34 @@ services:
       - kenya-health-net
     restart: "no"
 
+  iceberg-rest:
+    image: tabulario/iceberg-rest:0.10.0
+    container_name: kenya-health-pipeline-iceberg-rest-1
+    env_file: .env
+    environment:
+      CATALOG_WAREHOUSE: s3://iceberg-warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_ACCESS__KEY__ID: ${MINIO_ROOT_USER}
+      CATALOG_S3_SECRET__ACCESS__KEY: ${MINIO_ROOT_PASSWORD}
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      CATALOG_S3_REGION: us-east-1
+    ports:
+      - "8182:8181"
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/v1/config"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - kenya-health-net
+    restart: unless-stopped
+
   trino:
     image: trinodb/trino:480
     env_file: .env
@@ -164,6 +191,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      iceberg-rest:
+        condition: service_healthy
     networks:
       - kenya-health-net
     restart: unless-stopped
@@ -231,7 +260,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Runs once on fresh start: migrates DB, creates admin user, syncs roles
   superset-init:
     <<: *superset-common
     command: >

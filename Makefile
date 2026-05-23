@@ -90,16 +90,16 @@ tofu-destroy:
 # ── dbt ──────────────────────────────────────────────────────
 
 dbt-run:
-	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && dbt run --profiles-dir ."
+	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && /home/airflow/.local/bin/dbt run --profiles-dir . --project-dir ."
 
 dbt-test:
-	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && dbt test --profiles-dir ."
+	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && /home/airflow/.local/bin/dbt test --profiles-dir . --project-dir ."
 
 dbt-snapshot:
-	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && dbt snapshot --profiles-dir ."
+	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && /home/airflow/.local/bin/dbt snapshot --profiles-dir . --project-dir ."
 
 dbt-docs:
-	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && dbt docs generate --profiles-dir . && dbt docs serve --port 8082"
+	docker compose exec airflow-worker bash -c "cd /opt/airflow/dbt && /home/airflow/.local/bin/dbt docs generate --profiles-dir . --project-dir . && dbt docs serve --port 8082"
 
 # ── Superset ─────────────────────────────────────────────────
 

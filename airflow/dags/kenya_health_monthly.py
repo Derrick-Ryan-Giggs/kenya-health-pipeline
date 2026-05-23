@@ -1,15 +1,6 @@
 # ============================================================
 # Kenya Health Facility Mapping Pipeline
 # airflow/dags/kenya_health_monthly.py
-#
-# Main orchestrator DAG — runs on the 1st of every month.
-# Triggers the three ingestion DAGs in parallel and waits
-# for all to complete successfully.
-#
-# dbt is NOT triggered here — it will be added back once
-# all data has landed cleanly in the object store.
-#
-# Schedule: 02:00 EAT on the 1st of each month
 # ============================================================
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -28,7 +19,7 @@ default_args = {
 with DAG(
     dag_id="kenya_health_monthly",
     default_args=default_args,
-    description="Monthly Kenya health facility pipeline — ingestion only",
+    description="Monthly Kenya health facility pipeline — ingest + transform",
     schedule_interval="0 2 1 * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
@@ -38,7 +29,6 @@ with DAG(
 
     start = EmptyOperator(task_id="start")
 
-    # ── Ingestion — run in parallel ───────────────────────
     ingest_facilities = TriggerDagRunOperator(
         task_id="trigger_ingest_facilities",
         trigger_dag_id="ingest_facilities",
@@ -63,7 +53,16 @@ with DAG(
         reset_dag_run=True,
     )
 
-    end = EmptyOperator(task_id="ingestion_complete")
+    ingestion_complete = EmptyOperator(task_id="ingestion_complete")
 
-    # ── Task dependencies ─────────────────────────────────
-    start >> [ingest_facilities, ingest_population, ingest_geodata] >> end
+    transform = TriggerDagRunOperator(
+        task_id="trigger_dbt_run",
+        trigger_dag_id="dbt_run",
+        wait_for_completion=True,
+        poke_interval=30,
+        reset_dag_run=True,
+    )
+
+    end = EmptyOperator(task_id="end")
+
+    start >> [ingest_facilities, ingest_population, ingest_geodata] >> ingestion_complete >> transform >> end

@@ -2,7 +2,6 @@
 # Kenya Health Facility Mapping Pipeline
 # models/staging/schema.yml
 # ============================================================
-
 version: 2
 
 sources:
@@ -11,11 +10,11 @@ sources:
     schema: raw
     tables:
       - name: facilities
-        description: Raw MOH KMHFL facility list — JSON uploaded by Airflow
+        description: Raw MOH KMHFL facility list
       - name: population
-        description: Raw KNBS population estimates — JSON uploaded by Airflow
+        description: Raw KNBS population estimates
       - name: geodata
-        description: Raw HDX Kenya county GeoJSON — JSON uploaded by Airflow
+        description: Raw HDX Kenya county GeoJSON
 
 models:
   - name: stg_facilities
@@ -23,9 +22,12 @@ models:
       Cleaned and normalized operational health facilities from MOH KMHFL.
       Facility types normalized to Hospital, Health Centre, Dispensary, Clinic.
     columns:
-      - name: facility_code
-        description: Unique MOH facility identifier
+      - name: facility_id
+        description: Unique KMHFR UUID — always populated
         tests: [not_null, unique]
+      - name: facility_code
+        description: MOH facility code — may be empty for unregistered facilities
+        tests: [not_null]
       - name: facility_name
         description: Official facility name
         tests: [not_null]

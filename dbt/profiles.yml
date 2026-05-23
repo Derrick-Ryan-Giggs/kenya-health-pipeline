@@ -1,9 +1,6 @@
 # ============================================================
 # Kenya Health Facility Mapping Pipeline
 # dbt/profiles.yml
-#
-# All connection details read from environment variables.
-# Never hardcode credentials here.
 # ============================================================
 
 kenya_health:

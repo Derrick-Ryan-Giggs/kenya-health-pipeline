@@ -79,7 +79,7 @@ services:
     restart: unless-stopped
 
   postgres-superset:
-    image: postgres:18
+    image: postgres:15
     env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_SUPERSET_USER}
@@ -147,7 +147,7 @@ services:
     restart: "no"
 
   iceberg-rest:
-    image: tabulario/iceberg-rest:0.10.0
+    image: apache/iceberg-rest-fixture
     container_name: kenya-health-pipeline-iceberg-rest-1
     env_file: .env
     environment:
@@ -158,6 +158,11 @@ services:
       CATALOG_S3_SECRET__ACCESS__KEY: ${MINIO_ROOT_PASSWORD}
       CATALOG_S3_PATH__STYLE__ACCESS: "true"
       CATALOG_S3_REGION: us-east-1
+      AWS_REGION: us-east-1
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:sqlite:/catalog/iceberg_catalog.db
+    volumes:
+      - iceberg-catalog:/catalog
     ports:
       - "8182:8181"
     depends_on:
@@ -302,6 +307,7 @@ volumes:
   postgres-airflow-data:
   postgres-superset-data:
   minio-data:
+  iceberg-catalog:
 
 networks:
   kenya-health-net:

@@ -1,12 +1,24 @@
-.env
-*.tfstate
-*.tfstate.backup
-.terraform/
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Python
 __pycache__/
 *.pyc
-airflow/logs/
-.dbt/
-*.egg-info/
-.venv/
+*.pyo
+.pytest_cache/
 
-.bruin.yml
+# Environment
+.env
+*.env.local
+
+# Airflow
+airflow/logs/
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

@@ -22,7 +22,7 @@
 {{
     config(
         target_schema='snapshots',
-        unique_key='facility_code',
+        unique_key='facility_id',
         strategy='check',
         check_cols=[
             'facility_name',
@@ -43,6 +43,7 @@
 }}
 
 select
+    facility_id,
     facility_code,
     facility_name,
     facility_type,

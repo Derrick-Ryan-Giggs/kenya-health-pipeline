@@ -39,6 +39,8 @@ x-airflow-common: &airflow-common
     - ./airflow/webserver_config.py:/opt/airflow/webserver_config.py
     - ./ingestion:/opt/airflow/ingestion
     - ./dbt:/opt/airflow/dbt
+    - dbt-target:/opt/airflow/dbt/target
+    - dbt-logs:/opt/airflow/dbt/logs
   networks:
     - kenya-health-net
 
@@ -79,7 +81,7 @@ services:
     restart: unless-stopped
 
   postgres-superset:
-    image: postgres:15
+    image: postgres:18
     env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_SUPERSET_USER}
@@ -308,6 +310,8 @@ volumes:
   postgres-superset-data:
   minio-data:
   iceberg-catalog:
+  dbt-target:
+  dbt-logs:
 
 networks:
   kenya-health-net:

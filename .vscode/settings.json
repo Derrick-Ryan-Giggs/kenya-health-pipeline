@@ -1,0 +1,6 @@
+{
+  "dbt.dbtPythonPathOverride": "/home/derrrick-ryan-giggs/anaconda3/bin/python",
+  "dbt.profilesDirOverride": "/mnt/storage/Desktop/kenya-health-pipeline/dbt",
+  "dbt.targetPathOverride": "/home/derrrick-ryan-giggs/.dbt/kenya-health-target",
+  "python.defaultInterpreterPath": "/home/derrrick-ryan-giggs/anaconda3/bin/python"
+}

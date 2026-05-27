@@ -22,3 +22,5 @@ airflow/logs/
 # OS
 .DS_Store
 Thumbs.db
+
+.bruin.yml

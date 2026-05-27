@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 DBT_BIN      = "/home/airflow/.local/bin/dbt"
 DBT_DIR      = "/opt/airflow/dbt"
 DBT_PROFILES = "/opt/airflow/dbt"
+DBT_LOGS     = "/tmp/dbt_logs"
 
 default_args = {
     "owner":            "kenya-health",
@@ -37,17 +38,17 @@ with DAG(
 
     dbt_run = BashOperator(
         task_id="dbt_run",
-        bash_command=f"cd {DBT_DIR} && {DBT_BIN} run --profiles-dir {DBT_PROFILES} --project-dir {DBT_DIR}",
+        bash_command=f"cd {DBT_DIR} && {DBT_BIN} run --profiles-dir {DBT_PROFILES} --project-dir {DBT_DIR} --log-path {DBT_LOGS}",
     )
 
     dbt_test = BashOperator(
         task_id="dbt_test",
-        bash_command=f"cd {DBT_DIR} && {DBT_BIN} test --profiles-dir {DBT_PROFILES} --project-dir {DBT_DIR}",
+        bash_command=f"cd {DBT_DIR} && {DBT_BIN} test --profiles-dir {DBT_PROFILES} --project-dir {DBT_DIR} --log-path {DBT_LOGS}",
     )
 
     dbt_snapshot = BashOperator(
         task_id="dbt_snapshot",
-        bash_command=f"cd {DBT_DIR} && {DBT_BIN} snapshot --profiles-dir {DBT_PROFILES} --project-dir {DBT_DIR}",
+        bash_command=f"cd {DBT_DIR} && {DBT_BIN} snapshot --profiles-dir {DBT_PROFILES} --project-dir {DBT_DIR} --log-path {DBT_LOGS}",
     )
 
     end = EmptyOperator(task_id="end")

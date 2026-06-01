@@ -19,17 +19,18 @@ subcounty_counts as (
     group by sub_county_name
 ),
 nairobi_population as (
-    select sub_county_name, population
-    from {{ ref('stg_population') }}
-    where lower(county_name) = 'nairobi'
-    and   lower(sub_county_name) != 'nairobi'
-    and   sub_county_name != ''
+    select
+        sub_county_name,
+        population_2019,
+        population_2024
+    from {{ ref('nairobi_subcounty_population') }}
 ),
 final as (
     select
         s.sub_county_name,
         s.total_facilities,
-        p.population,
+        p.population_2019,
+        p.population_2024,
         s.maternity_count,
         s.art_count,
         s.tb_count,
@@ -38,12 +39,13 @@ final as (
         s.health_centre_count,
         s.dispensary_count,
         s.clinic_count,
-        round(cast(s.total_facilities as double) / nullif(p.population, 0) * 10000, 2) as facilities_per_10k,
+        round(cast(s.total_facilities as double) / nullif(p.population_2024, 0) * 10000, 2) as facilities_per_10k,
         case when s.maternity_count = 0 then true else false end as no_maternity_flag,
         case when s.art_count       = 0 then true else false end as no_art_flag,
         case when s.emergency_count = 0 then true else false end as no_emergency_flag,
-        row_number() over (order by cast(s.total_facilities as double) / nullif(p.population, 0) asc) as subcounty_density_rank
+        row_number() over (order by cast(s.total_facilities as double) / nullif(p.population_2024, 0) asc) as subcounty_density_rank
     from subcounty_counts s
-    left join nairobi_population p on lower(s.sub_county_name) = lower(p.sub_county_name)
+    left join nairobi_population p
+        on lower(s.sub_county_name) = lower(p.sub_county_name)
 )
 select * from final

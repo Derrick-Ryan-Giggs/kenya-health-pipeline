@@ -6,20 +6,22 @@
 
 ## Table of Contents
 
-- [Problem Description](#-problem-description)
-- [Solution Overview](#-solution-overview)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [Data Sources](#-data-sources)
-- [Project Structure](#-project-structure)
-- [Infrastructure as Code (OpenTofu)](#-infrastructure-as-code-opentofu)
-- [Data Ingestion & Orchestration](#-data-ingestion--orchestration)
-- [Data Lakehouse Design](#-data-lakehouse-design)
-- [Transformations (dbt Core)](#-transformations-dbt-core)
-- [Dashboard](#-dashboard)
-- [Challenges & How We Solved Them](#-challenges--how-we-solved-them)
-- [Reproducibility — How to Run](#-reproducibility--how-to-run)
-- [Known Limitations & Future Work](#-known-limitations--future-work)
+- [Problem Description](#problem-description)
+- [Solution Overview](#solution-overview)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Data Sources](#data-sources)
+- [Project Structure](#project-structure)
+- [Infrastructure as Code (OpenTofu)](#infrastructure-as-code-opentofu)
+- [Data Ingestion & Orchestration](#data-ingestion--orchestration)
+- [Data Lakehouse Design](#data-lakehouse-design)
+- [Transformations (dbt Core)](#transformations-dbt-core)
+- [Dashboard](#dashboard)
+- [Challenges & How We Solved Them](#challenges--how-we-solved-them)
+- [Reproducibility — How to Run](#reproducibility--how-to-run)
+- [Known Limitations & Future Work](#known-limitations--future-work)
+- [References](#references)
+- [Author](#author)
 
 ---
 
@@ -477,24 +479,113 @@ On each monthly pipeline run, any facility that changed is recorded with `dbt_va
 
 ## Dashboard
 
-**Dashboard:** Kenya Health Facility Dashboard (Apache Superset 5.0.0)
-
+**Tool:** Apache Superset 5.0.0
+**Dataset:** `mart_county_density`, `mart_service_gaps`, `mart_underserved_counties`, `mart_nairobi_subcounty`
 **Live URL (Cloudflare Tunnel):** `https://emily-illustration-nutrition-choosing.trycloudflare.com`
 
-### Charts
+The dashboard has 8 charts across national-level, service-specific, and Nairobi sub-county views.
 
-| # | Chart Name | Type | Dataset | Key Insight |
-|---|-----------|------|---------|-------------|
-| 1 | Facilities per 10,000 People by County | Bar Chart | `mart_county_density` | County-level density comparison across all 47 counties |
-| 2 | Underserved Counties Ranking | Table | `mart_underserved_counties` | Bungoma ranks #1 most underserved (1.88/10k, 1.67M people) |
-| 3 | Maternity Coverage by County | Bar Chart | `mart_service_gaps` | Maternity facilities per 100k by county |
-| 4 | Service Coverage Rates by County | Grouped Bar | `mart_service_gaps` | 4 services side-by-side: maternity, ART, TB, emergency |
-| 5 | Nairobi Sub-County Facility Density | Bar Chart | `mart_nairobi_subcounty` | Starehe (7.23) vs Embakasi North (0.62) inequality within Nairobi |
-| 6 | Nairobi Sub-County Service Gaps | Table | `mart_nairobi_subcounty` | Sub-county service detail with 2024 population projections |
-| 7 | Total Counties Mapped | Big Number | `mart_county_density` | 47 Kenya Counties Mapped |
-| 8 | Kenya Facility Density Map | deck.gl Polygon | `geo_county_density_feature` | Choropleth — red = high density, lighter = underserved |
+---
 
-The choropleth map (Chart 8) required significant engineering to get working. The geometry data required wrapping in full GeoJSON Feature objects (`{"type":"Feature","geometry":...,"properties":{...}}`) before deck.gl would render the polygons. County name normalization across three datasets required explicit CASE mapping for Elegeyo-Marakwet, Murang'a, and Tharaka-Nithi.
+### Chart 1 — Facilities per 10,000 People by County
+
+![Facilities per 10,000 People by County](images/01_facilities_per_10k_by_county.png)
+
+**Type:** Bar Chart | **Dataset:** `mart_county_density`
+
+The primary national scorecard. Each bar represents one of Kenya's 47 counties, with height showing the number of health facilities per 10,000 people. The spike around Lamu (~6.3) reflects Lamu's small population relative to its facility count — a reminder that raw ratios must be read alongside absolute population figures. Counties sitting below 2.0 on the left side of the chart (Trans Nzoia, Kakamega) are the counties with the largest absolute populations being underserved. The chart is sorted alphabetically, not by rank — the Underserved Counties Ranking table provides the ranked view.
+
+**Key metric:** `AVG(facilities_per_10k)` sourced from `mart_county_density.facilities_per_10k`, calculated as `ROUND(total_facilities / total_population * 10000, 2)`.
+
+---
+
+### Chart 2 — Underserved Counties Ranking
+
+![Underserved Counties Ranking](images/02_underserved_counties_ranking.png)
+
+**Type:** Table with conditional formatting | **Dataset:** `mart_underserved_counties`
+
+All 47 counties ranked from most to least underserved. The `severity_score` column is highlighted red for scores of 3 (critical) and pink for scores of 2, providing immediate visual identification of the most at-risk counties. The table also shows `facilities_needed_to_baseline` — the number of additional facilities each county would need to reach a minimum standard of 3 per 10,000 people. Bungoma leads with 21 facilities needed. The `tb_gap_flag` column confirms Samburu as the only county with a critical TB service gap (only 1 TB facility for 310,327 people).
+
+**Key columns:** `underserved_rank`, `severity_score`, `facilities_per_10k`, `total_population`, `maternity_gap_flag`, `art_gap_flag`, `tb_gap_flag`, `no_emergency_flag`, `facilities_needed_to_baseline`.
+
+---
+
+### Chart 3 — Maternity Coverage by County
+
+![Maternity Coverage by County](images/03_maternity_coverage_by_county.png)
+
+**Type:** Bar Chart | **Dataset:** `mart_service_gaps`
+
+Maternity facilities per 100,000 people across all 47 counties. The spike at Lamu (~52) again reflects the small-population effect. More telling are the counties sitting between 10 and 17 on the left — these are the counties where maternal healthcare access is most constrained on a population-adjusted basis. This chart directly addresses one of Kenya's most acute health challenges: maternal mortality, which remains high in underserved counties with limited access to skilled birth attendants and maternity beds.
+
+**Key metric:** `AVG(maternity_per_100k)`, calculated as `ROUND(maternity_count / total_population * 100000, 2)`.
+
+---
+
+### Chart 4 — Service Coverage Rates by County
+
+![Service Coverage Rates by County](images/04_service_coverage_rates_by_county.png)
+
+**Type:** Grouped Bar Chart | **Dataset:** `mart_service_gaps`
+
+Four services compared side-by-side for every county: TB (blue), maternity (dark red), ART/HIV treatment (orange-red), and emergency care (amber). The TB bars dominate the chart — TB facility counts are much higher than the other three services in most counties because TB diagnosis points are integrated into a wider range of facility types. The very short amber bars for emergency care across many counties is a visible representation of how thin emergency coverage is nationally. This chart is the most information-dense in the dashboard and rewards close examination.
+
+**Key metrics:** `AVG(tb_count)`, `AVG(maternity_per_100k)`, `AVG(art_per_100k)`, `AVG(emergency_per_100k)`.
+
+---
+
+### Chart 5 — Nairobi Sub-County Facility Density
+
+![Nairobi Sub-County Facility Density](images/05_nairobi_subcounty_facility_density.png)
+
+**Type:** Bar Chart | **Dataset:** `mart_nairobi_subcounty`
+
+The most striking chart in the dashboard. Within Nairobi alone — a single county — the range is from 0.62 (Embakasi North) to 7.23 (Starehe/CBD). That is more than an 11x difference between the least and most served sub-county in the same city. Embakasi North has 291,760 people and only 18 health facilities. Westlands at 5.44 and Dagoretti North at 4.93 sit comfortably above the national median. This chart is the most visceral data visualisation in the project — it shows that healthcare inequality is not just a rural vs urban story but an intra-city story playing out at sub-county level.
+
+**Key metric:** `AVG(facilities_per_10k)` from `mart_nairobi_subcounty`, joined to the `nairobi_subcounty_population` dbt seed (2019 census + 2024 projections at 2.3% annual growth).
+
+---
+
+### Chart 6 — Nairobi Sub-County Service Gaps
+
+![Nairobi Sub-County Service Gaps](images/06_nairobi_subcounty_service_gaps.png)
+
+**Type:** Table | **Dataset:** `mart_nairobi_subcounty`
+
+The full service breakdown for all 17 Nairobi sub-counties, sorted by `facilities_per_10k` ascending (most underserved first). The table shows 2024 projected population alongside raw counts of maternity, ART, and emergency facilities per sub-county. Embakasi North sits at rank 1: 18 total facilities, 291,760 people (2024), 0.62 per 10k. Starehe sits at rank 17: 158 facilities, 218,388 people, 7.23 per 10k. Notably, every sub-county shows `no_maternity_flag = false`, `no_art_flag = false`, and `no_emergency_flag = false` — Nairobi's inequality is one of density, not complete service absence. The crisis is volume and access, not a total gap.
+
+**Key columns:** `sub_county_name`, `total_facilities`, `population_2024`, `facilities_per_10k`, `maternity_count`, `art_count`, `emergency_count`, `subcounty_density_rank`.
+
+---
+
+### Chart 7 — Total Counties Mapped
+
+![Total Counties Mapped](images/07_total_counties_mapped.png)
+
+**Type:** Big Number | **Dataset:** `mart_county_density`
+
+A single, bold confirmation: all 47 of Kenya's counties are represented in the pipeline output. This scorecard validates that no county was lost to data quality issues, join failures, or ingestion gaps during the ETL process. The `assert_county_count_equals_47` dbt test enforces this programmatically — if any run produces fewer than 47 counties, the test fails and the pipeline stops before writing to marts.
+
+---
+
+### Chart 8 — Kenya Facility Density Map
+
+![Kenya Facility Density Map](images/08_kenya_facility_density_map.png)
+
+**Type:** deck.gl Polygon Choropleth | **Dataset:** `geo_county_density_feature` (virtual dataset)
+
+A full choropleth map of all 47 Kenya counties, color-coded by facility density. Light yellow represents the least served counties (0.9–1.8 per 10k); dark maroon represents the most served (4.4–5.3 per 10k). The western cluster of small, densely-colored counties reflects the high-population, relatively well-served counties around Nairobi and the Rift Valley. The large, pale orange counties in the north and northeast (Turkana, Marsabit, Mandera, Wajir, Garissa) are sparse in population but also sparse in facilities — their lighter color reflects the ratio calculation, not adequate provision.
+
+Building this chart required considerable engineering effort. Superset's built-in Country Map only supports Kenya's pre-2013 provincial boundaries (8 provinces, not 47 counties). The solution was to use `deck.gl Polygon` with a custom virtual dataset in Superset SQL Lab that wraps each county's raw geometry string from `stg_geodata` inside a full GeoJSON Feature object:
+
+```sql
+concat('{"type":"Feature","geometry":', g.geometry,
+       ',"properties":{"county_name":"', g.county_name,
+       '","facilities_per_10k":', cast(d.facilities_per_10k as varchar), '}}')
+```
+
+Three county name mismatches between the geodata and mart tables required explicit CASE mapping (`elegeyo-marakwet`, `murang'a`, `tharaka - nithi`).
 
 ---
 
@@ -805,7 +896,3 @@ make clean          # WARNING: removes all volumes (data loss)
 **Derrick Ryan Giggs**
 - GitHub: [github.com/Derrick-Ryan-Giggs](https://github.com/Derrick-Ryan-Giggs)
 - Medium: [medium.com/@derrickryangiggs](https://medium.com/@derrickryangiggs)
-
-
----
-

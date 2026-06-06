@@ -24,3 +24,6 @@ airflow/logs/
 Thumbs.db
 
 .bruin.yml
+
+cloudflared-linux-amd64.deb
+nohup.out

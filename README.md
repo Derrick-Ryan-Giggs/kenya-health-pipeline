@@ -604,21 +604,7 @@ Three county name mismatches between the geodata and mart tables required explic
 - Superset: Added `SESSION_COOKIE_NAME`, `SESSION_PERMANENT = True`, `WTF_CSRF_TIME_LIMIT = None`, and a `before_request` hook to force permanent sessions on every request
 - Both: Set fixed, stable `SECRET_KEY` values in `.env` (generated with `openssl rand -hex 32`) — the default behaviour was generating a random key on each container start, invalidating all sessions on every restart
 
-### 2. Iceberg Catalog Not Persisting Across Restarts
-
-**Problem:** Every time the stack was restarted, Trino lost all knowledge of the Iceberg schemas and tables. Re-running `CREATE SCHEMA` and `CALL iceberg.system.register_table(...)` was required on every fresh start.
-
-**Root cause:** The Iceberg REST catalog was using an in-memory SQLite database by default. On container restart, the memory was wiped.
-
-**Solution:** Added `CATALOG_URI=jdbc:sqlite:/catalog/iceberg_catalog.db` to the iceberg-rest container environment and mounted a named Docker volume (`iceberg-catalog`) at `/catalog`. The SQLite file now persists across all restarts. Both schemas (`iceberg.raw`, `iceberg.kenya_health`) and all table registrations survive `docker compose down / up`.
-
-### 3. dbt Target Directory Permission Conflicts
-
-**Problem:** The dbt VS Code extension (running as the host user) would create the `dbt/target/` directory with host user ownership. When Airflow (running as UID 50000 inside the container) tried to write `partial_parse.msgpack`, it got `PermissionError: [Errno 13] Permission denied`.
-
-**Solution:** Declared `dbt-target` and `dbt-logs` as **named Docker volumes** in `docker-compose.yml`, mounted at `/opt/airflow/dbt/target` and `/opt/airflow/dbt/logs`. Named volumes are owned by the Docker daemon, not the host user. After deleting the host-owned directories (`sudo rm -rf dbt/target dbt/logs`) and recreating the worker container, ownership was fixed with `docker exec --user root ... chown -R 50000:0 /opt/airflow/dbt/target`.
-
-### 4. KMHFR API URL Discovery
+### 2. KMHFR API URL Discovery
 
 **Problem:** The pipeline was originally wired to hit `https://kmhfl.health.go.ke/api` but that domain does a server-side 301 redirect to `https://kmhfr.health.go.ke`. The redirect sent the client to the new domain, which then returned just the URL path as plain text (not JSON) — causing a `JSONDecodeError: Expecting value: line 1 column 1`.
 
@@ -626,7 +612,7 @@ Three county name mismatches between the geodata and mart tables required explic
 
 **Solution:** Updated `KMHFL_FACILITIES_URL` in `.env` to the correct API endpoint. Confirmed with `curl` that it returns paginated JSON (20,391 facilities, 680 pages). No authentication required.
 
-### 5. Superset Country Map Only Supports 8 Old Provinces
+### 3. Superset Country Map Only Supports 8 Old Provinces
 
 **Problem:** Kenya's Country Map in Superset uses pre-loaded GeoJSON from inside the Superset image. That GeoJSON has only 8 administrative subdivisions (the old provinces: KE-100 through KE-800), not the current 47 counties. No amount of ISO code mapping could fix this — the underlying map data simply doesn't have county boundaries.
 
@@ -643,33 +629,7 @@ concat('{"type":"Feature","geometry":', g.geometry,
        '","facilities_per_10k":', cast(d.facilities_per_10k as varchar), '}}')
 ```
 
-### 6. Superset psycopg2 Not Installing in Correct Python Environment
-
-**Problem:** Superset 5.0.0 uses a virtual environment at `/app/.venv` managed by `uv` (not pip). Installing `psycopg2-binary` with `pip install` or `uv pip install --system` put it in the system Python (`/usr/local/lib/python3.10`), not the venv. Superset never saw it and kept crashing with `ModuleNotFoundError: No module named 'psycopg2'`.
-
-**Investigation:** Ran `docker run --rm apache/superset:5.0.0 find / -name "pip"` — returned nothing. Found `uv` at `/usr/local/bin/uv` and Python at `/app/.venv/bin/python3`. Confirmed via `sys.path` that the venv only loads from `/app/.venv/lib/python3.10/site-packages`.
-
-**Solution:** Used `uv pip install --python /app/.venv/bin/python3` in the Dockerfile — this tells uv to target the specific Python interpreter (and its associated virtual environment), bypassing the system Python entirely:
-```dockerfile
-RUN uv pip install --python /app/.venv/bin/python3 \
-    psycopg2-binary==2.9.9 \
-    sqlalchemy-trino==0.5.0 \
-    trino==0.327.0
-```
-
-### 7. Airflow pip Upgrading Airflow Itself During Image Build
-
-**Problem:** Installing `apache-airflow-providers-amazon` without a constraint file caused pip to resolve it as requiring Airflow 3.0.0 (not 2.9.2), and silently upgraded the entire Airflow installation. The container then couldn't find the `airflow` binary at the path the entrypoint expected for 2.9.2.
-
-**Solution:** Added the official Airflow constraints file to all pip installs:
-```dockerfile
-RUN pip install --no-cache-dir \
-    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.2/constraints-3.10.txt" \
-    -r /requirements.txt
-```
-Also pinned the base image to `apache/airflow:2.9.2-python3.10` (explicit Python version) to prevent implicit base image changes.
-
-### 8. Nairobi Sub-County Population Data Not Available in KNBS Source
+### 4. Nairobi Sub-County Population Data Not Available in KNBS Source
 
 **Problem:** The KNBS CSV only had a single county-level total for Nairobi (4,397,073) with an empty `sub_county_name` field. `mart_nairobi_subcounty` was showing `NULL` for all population and density calculations.
 
@@ -679,7 +639,7 @@ population_2024 = population_2019 × (1.023)^5
 ```
 This is exactly what WHO, MOH, and NGOs operating in Kenya use — 2019 census as the base, projections for the current year. The seed was loaded into Iceberg via `dbt seed` and joined in the mart model.
 
-### 9. Three County Name Mismatches Across Datasets
+### 5. Three County Name Mismatches Across Datasets
 
 **Problem:** The geodata table (from HOT OSM via HDX) spelled three county names differently from the mart tables (sourced from KMHFR):
 - `elegeyo-marakwet` → should be `elgeyo marakwet`
